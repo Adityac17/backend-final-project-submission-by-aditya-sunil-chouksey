@@ -18,6 +18,8 @@ const env = {
   },
   maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB) || 5,
   maxPhotosPerBusiness: Number(process.env.MAX_PHOTOS_PER_BUSINESS) || 10,
+  // Vercel functions have a read-only filesystem, so local photo storage is unavailable
+  isServerless: Boolean(process.env.VERCEL),
 };
 
 if (!env.jwtSecret) {

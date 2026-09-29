@@ -32,8 +32,7 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.10.2",
     "morgan": "^1.12.1",
-    "multer": "^2.4.0",
-    "swagger-ui-express": "^5.0.1"
+    "multer": "^2.4.0"
   },
   "devDependencies": {
     "supertest": "^7.3.0"

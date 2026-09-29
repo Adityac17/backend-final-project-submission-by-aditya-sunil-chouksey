@@ -340,6 +340,24 @@ test('TownRate API', async (t) => {
     assert.deepEqual(res.body.businessRating, { averageRating: 4, reviewCount: 1 });
   });
 
+  await t.test('serverless deploy without Firebase: uploads fail with 503, no local writes', async () => {
+    const env = require('../src/config/env');
+    env.isServerless = true;
+    try {
+      const res = await api().post(`/api/businesses/${ctx.businessId}/photos`).set(auth(ctx.ownerToken))
+        .attach('photos', PNG, { filename: 'a.png', contentType: 'image/png' })
+        .expect(503);
+      assert.match(res.body.message, /Firebase Storage/);
+      const health = await api().get('/api/health').expect(200);
+      assert.equal(health.body.photoStorage, 'unavailable');
+      // JSON-only creates still work
+      await api().post('/api/businesses').set(auth(ctx.ownerToken))
+        .send({ name: 'No Photo Cafe', category: 'cafe', address: { city: 'Delhi' } }).expect(201);
+    } finally {
+      env.isServerless = false;
+    }
+  });
+
   await t.test('photos: add and delete', async () => {
     const added = await api().post(`/api/businesses/${ctx.businessId}/photos`).set(auth(ctx.ownerToken))
       .attach('photos', PNG, { filename: 'a.png', contentType: 'image/png' })
@@ -361,7 +379,7 @@ test('TownRate API', async (t) => {
   await t.test('categories: list with counts, admin-only writes', async () => {
     const res = await api().get('/api/categories').expect(200);
     const cafe = res.body.data.find((c) => c.slug === 'cafe');
-    assert.equal(cafe.businessCount, 2);
+    assert.equal(cafe.businessCount, 3);
 
     await api().post('/api/categories').set(auth(ctx.ownerToken)).send({ name: 'Bakery' }).expect(403);
     const created = await api().post('/api/categories').set(auth(ctx.adminToken)).send({ name: 'Book Store' }).expect(201);
@@ -382,6 +400,17 @@ test('TownRate API', async (t) => {
 
   await t.test('admin can manage any business', async () => {
     await api().put(`/api/businesses/${ctx.gymId}`).set(auth(ctx.adminToken)).send({ description: 'Moderated' }).expect(200);
+  });
+
+  await t.test('Swagger UI page and spec', async () => {
+    const page = await api().get('/api-docs').expect(200);
+    assert.match(page.headers['content-type'], /html/);
+    assert.match(page.text, /swagger-ui-bundle\.js/);
+    assert.match(page.headers['content-security-policy'], /cdn\.jsdelivr\.net/);
+    const init = await api().get('/api-docs/init.js').expect(200);
+    assert.match(init.headers['content-type'], /javascript/);
+    const spec = await api().get('/api-docs.json').expect(200);
+    assert.equal(spec.body.openapi, '3.0.3');
   });
 
   await t.test('unknown route and malformed JSON', async () => {

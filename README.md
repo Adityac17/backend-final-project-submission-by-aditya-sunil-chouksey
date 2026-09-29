@@ -17,7 +17,7 @@ Built with **Node.js, Express 5, MongoDB (Mongoose)** and **Firebase** (Auth + S
 - **Categories** with business counts
 - **Validation** on every input (express-validator), consistent JSON errors
 - **Docs**: Swagger UI at `/api-docs` and a Postman collection
-- **Tests**: 39 tests (unit and end-to-end against a real MongoDB)
+- **Tests**: 41 tests (unit and end-to-end against a real MongoDB)
 
 ## Quick start
 
@@ -192,9 +192,10 @@ curl "http://localhost:5000/api/reviews/business/<businessId>"
 ## Project structure
 
 ```
+api/index.js             Vercel serverless entry
 src/
   app.js                 Express app (middleware, docs, routes, error handling)
-  server.js              Connects to MongoDB and starts listening
+  server.js              Connects to MongoDB and starts listening (local, Render)
   config/                env, database, Firebase Admin setup
   models/                User, Business, Review, Category
   controllers/           Request handlers
@@ -206,7 +207,7 @@ src/
     errorHandler.js      Maps Mongoose, multer and JWT errors to JSON responses
   validators/            Validation rules for every endpoint
   services/storage.js    Firebase Storage upload/delete with local-disk fallback
-  docs/openapi.js        OpenAPI 3 spec
+  docs/                  OpenAPI 3 spec and Swagger UI page
   utils/                 ApiError, pagination/search helpers
 scripts/seed.js          Demo data
 tests/                   node:test + supertest
@@ -220,7 +221,7 @@ postman/                 Postman collection
 - **Search** uses case-insensitive regexes rather than a `$text` index so partial words match (`caf` finds "Cafe"). User input is regex-escaped. Searching a category name (e.g. "cafe") also returns businesses in that category.
 - **Geo search** stores `[longitude, latitude]` GeoJSON points with a 2dsphere index. Businesses without coordinates are still valid; they just don't appear in `/near`.
 - **Uploads** stay in memory and go to storage only after the business passes validation. If saving then fails, the uploaded files are deleted.
-- **Firebase is optional.** Without credentials, photos go to `./uploads` (served at `/uploads`) and `/auth/firebase` returns 503. Local disk isn't persistent on most hosts, so configure Firebase in production.
+- **Firebase is optional locally.** Without credentials, photos go to `./uploads` (served at `/uploads`) and `/auth/firebase` returns 503. Local disk isn't persistent on Render and is read-only on Vercel, so configure Firebase in production.
 - **Roles.** Self-registration can only choose `user` or `owner`. Admins are created in the database or by the seed script.
 
 ## Testing
@@ -235,11 +236,50 @@ TEST_MONGO_URI=mongodb://127.0.0.1:27018/townrate_test npm test
 
 The end-to-end suite covers auth, role and ownership checks, validation, multipart photo upload and deletion, search, geo search, rating recalculation, owner responses, categories and error handling. If MongoDB is unreachable the API tests are skipped and the unit tests still run.
 
-## Deployment (Render)
+## Deployment
 
-1. Create a MongoDB Atlas cluster and copy its connection string.
-2. On Render: **New → Blueprint**, pick this repo (uses `render.yaml`).
-3. Set `MONGO_URI`, `BASE_URL` (your Render URL) and the Firebase variables. `JWT_SECRET` is generated automatically.
-4. After the first deploy, seed categories from your machine: `MONGO_URI="<atlas uri>" npm run seed -- --categories-only`. (Without the flag the demo accounts, including an admin with a known password, are created too.)
+The same code deploys to both Render (long-running server, `src/server.js`) and Vercel (serverless function, `api/index.js`). Both can point at the same Atlas database.
 
-For Heroku: `heroku create`, set the same config vars, `git push heroku main` (the `start` script is used).
+### 1. Shared setup
+
+1. **MongoDB Atlas**: create a free cluster and a database user. Under *Network Access* allow `0.0.0.0/0`, because Render and Vercel don't have fixed IPs. Copy the connection string and add a database name, e.g. `.../townrate?retryWrites=true&w=majority`.
+2. **Firebase**: set up Storage, Auth and a service account as described in [Setting up Firebase](#setting-up-firebase).
+3. Seed categories once from your machine (no demo accounts):
+   ```bash
+   MONGO_URI="<atlas uri>" npm run seed -- --categories-only
+   ```
+
+Environment variables for both platforms:
+
+| Variable | Value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `MONGO_URI` | Atlas connection string |
+| `JWT_SECRET` | long random string (use the same value on both platforms if tokens should work on either) |
+| `BASE_URL` | the deployment's public URL |
+| `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_STORAGE_BUCKET` | from the service account JSON. Paste the private key including the `-----BEGIN/END PRIVATE KEY-----` lines; literal `\n` sequences are fine |
+
+### 2. Render
+
+1. **New → Blueprint**, pick this repo. It reads `render.yaml` (build `npm ci`, start `npm start`, health check `/api/health`).
+2. Fill in the variables above. `JWT_SECRET` is generated for you; replace it if you want tokens shared with Vercel.
+3. Check `https://<app>.onrender.com/api/health`: `database` should be `connected` and `photoStorage` `firebase`.
+
+The free plan sleeps after inactivity, so the first request can take ~30s.
+
+### 3. Vercel
+
+1. **Add New → Project**, import this repo. Leave Framework Preset as **Other**; `vercel.json` sets everything else (every path is rewritten to the `api/index.js` function).
+2. Add the variables above under *Settings → Environment Variables*. Also set `MAX_FILE_SIZE_MB=4`: Vercel rejects request bodies over 4.5 MB, so upload photos one or two at a time.
+3. Deploy, then check `https://<project>.vercel.app/api/health`.
+
+Or from the CLI:
+
+```bash
+npx vercel --prod
+```
+
+Vercel notes:
+- The filesystem is read-only, so photo uploads **require Firebase Storage**. Without it they return 503 and `/api/health` reports `photoStorage: "unavailable"`. Everything else still works.
+- The MongoDB connection is cached between invocations of a warm function.
+- Swagger UI loads its assets from jsDelivr, so `/api-docs` works on Vercel too.

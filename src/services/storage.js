@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const env = require('../config/env');
 const { getFirebaseApp, isStorageEnabled } = require('../config/firebase');
+const ApiError = require('../utils/ApiError');
 
 const LOCAL_DIR = path.join(__dirname, '..', '..', 'uploads');
 
@@ -40,9 +41,19 @@ async function uploadToLocal(file, key) {
   return { url: `${env.baseUrl}/uploads/${key}`, path: key, provider: 'local' };
 }
 
+// 'firebase', 'local', or 'unavailable' (serverless without Firebase)
+function storageMode() {
+  if (isStorageEnabled()) return 'firebase';
+  return env.isServerless ? 'unavailable' : 'local';
+}
+
 async function uploadFile(file, folder) {
   const key = buildKey(folder, file);
-  return isStorageEnabled() ? uploadToFirebase(file, key) : uploadToLocal(file, key);
+  const mode = storageMode();
+  if (mode === 'unavailable') {
+    throw new ApiError(503, 'Photo uploads need Firebase Storage configured on this deployment');
+  }
+  return mode === 'firebase' ? uploadToFirebase(file, key) : uploadToLocal(file, key);
 }
 
 function uploadFiles(files = [], folder) {
@@ -63,4 +74,4 @@ async function deleteFile(photo) {
   }
 }
 
-module.exports = { uploadFile, uploadFiles, deleteFile, LOCAL_DIR };
+module.exports = { uploadFile, uploadFiles, deleteFile, storageMode, LOCAL_DIR };

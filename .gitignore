@@ -6,3 +6,5 @@ uploads/*
 .DS_Store
 serviceAccountKey*.json
 coverage/
+.vercel
+.env*

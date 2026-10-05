@@ -15,15 +15,17 @@ function getFirebaseApp() {
 
   try {
     const { initializeApp, cert, applicationDefault } = require('firebase-admin/app');
-    const { getAuth } = require('firebase-admin/auth');
     const { getStorage } = require('firebase-admin/storage');
 
     const credential = hasInlineCreds
       ? cert({ projectId, clientEmail, privateKey })
       : applicationDefault();
     app = initializeApp({ credential, storageBucket });
-    app.auth = () => getAuth(app);
     app.storage = () => getStorage(app);
+    app.auth = () => {
+      const { getAuth } = require('firebase-admin/auth');
+      return getAuth(app);
+    };
     console.log('[firebase] initialised');
   } catch (err) {
     console.error('[firebase] failed to initialise, continuing without it:', err.message);

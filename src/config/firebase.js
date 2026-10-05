@@ -14,11 +14,16 @@ function getFirebaseApp() {
   if (!hasInlineCreds && !credentialsFile) return null;
 
   try {
-    const admin = require('firebase-admin');
+    const { initializeApp, cert, applicationDefault } = require('firebase-admin/app');
+    const { getAuth } = require('firebase-admin/auth');
+    const { getStorage } = require('firebase-admin/storage');
+
     const credential = hasInlineCreds
-      ? admin.credential.cert({ projectId, clientEmail, privateKey })
-      : admin.credential.applicationDefault();
-    app = admin.initializeApp({ credential, storageBucket });
+      ? cert({ projectId, clientEmail, privateKey })
+      : applicationDefault();
+    app = initializeApp({ credential, storageBucket });
+    app.auth = () => getAuth(app);
+    app.storage = () => getStorage(app);
     console.log('[firebase] initialised');
   } catch (err) {
     console.error('[firebase] failed to initialise, continuing without it:', err.message);

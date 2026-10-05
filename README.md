@@ -2,7 +2,7 @@
 
 Backend for **TownRate**, a local business review platform. Business owners publish profiles with photos, people search for businesses by keyword, category or location, and leave ratings and reviews that owners can respond to.
 
-Built with **Node.js, Express 5, MongoDB (Mongoose)** and **Firebase** (Auth + Storage).
+Built with **Node.js, Express 5, MongoDB (Mongoose)**, and **Firebase** (Auth + Storage).
 
 ## Features
 
